@@ -1,0 +1,69 @@
+# Local Yuvomi instance for developing the cleaningplan module.
+#
+#   docker compose up -d --build   start (first run builds the sidecar image)
+#   ./scripts/dev-setup.sh         seed admin + members (all: password cleaningplan-dev)
+#   docker compose logs -f         follow all three containers
+#   docker compose down -v && rm -rf .dev && docker compose up -d   wipe both databases
+#
+# Three containers on one origin, http://localhost:3000:
+#   caddy            reverse proxy; /api/extensions/cleaningplan/* -> sidecar, rest -> Yuvomi
+#   yuvomi           official image 2.84.0 with ./modules mounted (rescanned at runtime)
+#   cleaningplan-api the sidecar from ./service, own SQLite file in a named volume
+#
+# To run Yuvomi core from a local clone of ulsklyc/yuvomi instead of the image, replace
+# `image:` below with `build: ../yuvomi` (or wherever the clone is).
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: yuvomi-cleaningplan-proxy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - yuvomi
+      - cleaningplan-api
+
+  yuvomi:
+    image: ghcr.io/ulsklyc/yuvomi:2.84.0
+    container_name: yuvomi-cleaningplan-dev
+    restart: unless-stopped
+    volumes:
+      - ./modules:/app/modules
+      - ./.dev/data:/data
+      - ./.dev/backups:/backups
+    environment:
+      NODE_ENV: production
+      DB_PATH: /data/yuvomi.db
+      BACKUP_DIR: /backups
+      MODULES_DIR: /app/modules
+      # Lets us exercise Settings -> Modules -> "Add custom module" for other modules (this
+      # one is a hand-copied folder, which Yuvomi refuses to replace from Settings).
+      MODULES_ALLOW_WEB_INSTALL: "true"
+      # Dev-only secret for a localhost instance; never reuse outside this compose file.
+      SESSION_SECRET: dev-only-cleaningplan-5c1f0b3e9a7d4e2f8b6c1a0d9e3f7b2c4a6d8e0f
+      # No DB_ENCRYPTION_KEY: unencrypted dev database (as CONTRIBUTING.md recommends).
+      # Plain HTTP behind the Caddy container (one proxy hop):
+      SESSION_SECURE: "false"
+      TRUST_PROXY: "1"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  cleaningplan-api:
+    build: ./service
+    image: yuvomi-cleaningplan-api:dev
+    container_name: yuvomi-cleaningplan-api
+    restart: unless-stopped
+    environment:
+      YUVOMI_INTERNAL_URL: http://yuvomi:3000
+      PUBLIC_ORIGIN: http://localhost:3000
+    volumes:
+      - cleaningplan-data:/data
+
+volumes:
+  cleaningplan-data: {}

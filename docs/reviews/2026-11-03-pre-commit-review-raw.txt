@@ -1,0 +1,290 @@
+raw 45 → deduped 44
+
+#1 [critical] (security) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/auth.mjs:28
+  accessFrom() ignores user.access_scope, so a split-expense guest (an outsider Yuvomi confines to /split-expenses) gets full write access to the cleaning plan.
+  scenario: Yuvomi confines split-expense guests with a /api/v1 middleware (ulsklyc/yuvomi server/index.js:667-676) that explicitly exempts /auth/me, and resolvePermissions gives such a user MODULE_DEFAULT='write' for ext:cleaningplan (server/permissions.js:200,350) becau
+  fix: In accessFrom(): `const scope = me?.user?.access_scope ?? 'family'; if (scope !== 'family') return 'none';` before the admin check (covers split_guest and paired displays). Extend meResponse() in serv
+  votes: repro:ok/critical effect:ok/critical
+    repro: Reproducible end to end: a split guest is an ordinary users row (role 'member', family_role 'other', split-expenses.js:329-331) that logs in with a normal session (auth.js:1827 admits guests even when password login is o
+    effect: Confirmed end to end: service/app/auth.mjs:28-32 derives access only from user.role and permissions.modules, and routes.mjs:257-260 gates everything on that; a split-expense guest is a plain role 'member' row (yuvomi ser
+
+#2 [important] (security) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/auth.mjs:31
+  A missing ext:cleaningplan key in permissions.modules is mapped to 'write', so disabling (or not yet approving) the module in Yuvomi lifts every member's none/read restriction on the sidecar.
+  scenario: Yuvomi builds the extension permission catalog only from modules with status==='enabled' && enabled (ulsklyc/yuvomi server/services/modules.js:560, module-capabilities.js:249); for a key outside the catalog resolvePermissions drops the stored rows (permissions
+  fix: Fail closed: `return level === 'write' || level === 'read' ? level : 'none';` (admins are already handled on line 29). Add an auth test with a meResponse whose permissions.modules lacks the key and as
+  votes: repro:ok/important design:ok/important
+    repro: Reproduced: service/app/auth.mjs:31 returns 'write' for an undefined level (a live run of createAuth with a /auth/me body lacking the key, or lacking a permissions block, yields access 'write', while 'none' yields 'none'
+    design: Not a documented call: design §6.1 (docs/superpowers/specs/2026-11-02-cleaningplan-design.md:117-122) enumerates only none/read/write/admin and §§11-12 never mention an absent key, while service/app/auth.mjs:31 maps anyt
+
+#3 [important] (security) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/auth.mjs:56
+  The /auth/me forward carries no X-Forwarded-For and 401 answers are not cached, so all forwarded calls share one 300/min budget at Yuvomi and an unauthenticated caller can lock the whole household out of the module.
+  scenario: Yuvomi's global apiLimiter is 300 requests/minute per IP (ulsklyc/yuvomi server/index.js:258-266) keyed by req.ip; with TRUST_PROXY=1 and no X-Forwarded-For on the sidecar's fetch, every forwarded /auth/me counts against the sidecar container's single address,
+  fix: Pass the client address through: `const headers = { cookie, accept: 'application/json' }; if (req.headers['x-forwarded-for']) headers['x-forwarded-for'] = req.headers['x-forwarded-for'];` (Yuvomi trus
+  votes: repro:ok/important
+    repro: Reproducible as described: service/app/auth.mjs:56 forwards only `cookie` and `accept` (no X-Forwarded-For), so with Yuvomi's default `trust proxy` = 1 (ulsklyc/yuvomi server/index.js:187-191) every forwarded /auth/me is
+
+#4 [minor] (security) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/routes.mjs:73
+  vTags accepts tags in the module's own namespace (cleaningplan, cleaningplan:<id>), which the page uses as the identity of an iteration's tasks.
+  scenario: fetchIterationTasks, createMissingTasks' orphan adoption and deleteIterationOpenTasks (modules/cleaningplan/lib/yuvomi-tasks.js:9,51,71-81,104) select tasks purely by the tag `cleaningplan:<iteration id>`. A member who types `cleaningplan:3` into the tags fiel
+  fix: After the length check on line 75 add `if (/^cleaningplan(?::|$)/i.test(tag)) throw bad('bad_tags');` and add a route test; optionally drop such tags in parseTags so the form never sends them.
+  votes: repro:ok/minor effect:ok/minor design:ok/minor
+    repro: The mechanism is real: vTags (service/app/routes.mjs:67-83) accepts `cleaningplan:<id>`, createTaskForTodo spreads it onto the task (modules/cleaningplan/lib/yuvomi-tasks.js:42) and Yuvomi's `?tag=` filter matches tag_ke
+    effect: The hole is real and undeferred: vTags (service/app/routes.mjs:67-83) and parseTags (modules/cleaningplan/lib/format.js:34-43) accept `cleaningplan:<n>`, and Yuvomi's exact tag_key filter (ulsklyc/yuvomi server/routes/ta
+    design: Not a documented call: design §12 (docs/superpowers/specs/2026-11-02-cleaningplan-design.md:267-270) only says "free-form tags ... Yuvomi's limits apply" while §6.3 (line 158) and yuvomi-tasks.js:9,51 make `cleaningplan:
+
+#5 [minor] (security) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/.github/workflows/ci.yml:10
+  The test job runs with the repository's default GITHUB_TOKEN permissions because the workflow sets none at the top level.
+  scenario: Only the image job declares permissions (lines 25-27). On a repository (or organisation) whose default token permission is read/write, the test job's token can write contents while running third-party actions and the project's own test code on every push and P
+  fix: Add at the top level after `name: CI`:
+permissions:
+  contents: read
+The image job's own block still grants packages: write where needed.
+  votes: repro:ok/minor effect:REFUTED design:ok/minor
+    repro: Reproducible: .github/workflows/ci.yml has no top-level `permissions:` (lines 1-9) and the `test` job (lines 10-17) declares none, so its GITHUB_TOKEN takes the repository/organisation default; only `image` scopes its to
+    effect: ci.yml:10-17 is accurate as described (no top-level or job-level permissions on `test`), but the effect on a household is negligible: the job runs only two first-party GitHub actions and `node` directly with no dependenc
+    design: Not a deliberate call: the design spec (sections 4-12, repository layout at docs/superpowers/specs/2026-11-02-cleaningplan-design.md:222-239) never mentions CI or token scope, and ci.yml was added as an unruled "tidy for
+
+#6 [minor] (security) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/.github/workflows/ci.yml:43
+  Every v* tag moves the :latest image, including pre-release tags and re-tags of older versions.
+  scenario: The README tells households to run ghcr.io/la3mmchen/yuvomi-cleaningplan-api:latest (README.md:81). Pushing v1.1.0-rc1 to test a release candidate, or tagging v0.1.1 as a hotfix after v0.2.0 exists, publishes that build as :latest and every household restartin
+  fix: Gate the raw tag: `type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}` so pre-releases never move latest; for backported hotfix tags, publish latest only from a release workflow step 
+  votes: repro:ok/minor effect:ok/minor
+    repro: Reproducible: ci.yml:6 and :23 run the image job on any v* tag, and ci.yml:43 `type=raw,value=latest` pushes :latest unconditionally (the auto flavor would have skipped a `-rc1` prerelease, so this line is the cause for 
+    effect: .github/workflows/ci.yml:43 (`type=raw,value=latest`, unconditional under the `v*` trigger at ci.yml:6/:23) does move `:latest` on pre-release and backported tags while README.md:81 tells households to run `:latest`, and
+
+#7 [important] (sidecar-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/db.mjs:170
+  updateActivity recomputes anchor_day from first_due even when first_due equals the current next_due, and the edit form always re-sends first_due = next_due, so any edit of a monthly activity after a short month re-introduces the I-3 drift.
+  scenario: Reproduced: activity 'Dust' every 1 month, first_due 2026-01-31 (anchor_day 31). Generate Jan 1-31 -> next_due becomes 2026-02-28. The person renames it to 'Dust shelves' (plan-view.js:94 pre-fills the date input with next_due and :146 sends it whenever non-em
+  fix: In updateActivity treat first_due as a phase change only when it differs from the stored next_due, and re-derive the anchor when the unit switches into months: `const unitChanged = next.interval_unit 
+  votes: repro:ok/important
+    repro: Reproduced end to end: plan-view.js:94 prefills first_due with activity.next_due and :146 sends it whenever non-empty; index.js:121 PATCHes it unchanged; routes.mjs:113 passes it through vDate; db.mjs:170 then unconditio
+
+#8 [minor] (sidecar-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/db.mjs:275
+  deleteIteration restores next_due from the snapshot unconditionally, silently discarding a 'first due on' edit the person made after generating.
+  scenario: Generate Nov 3-9 (Vacuum every 2 days from Nov 3 -> next_due Nov 11). The person then edits Vacuum's first-due to Nov 15 to shift its phase, and afterwards deletes the iteration because the window was wrong. The delete rewinds next_due to Nov 3, the Nov 15 edi
+  fix: Store the advanced value too (e.g. activity_state_after {id: next_due} written in createIteration) and in deleteIteration restore an activity only when its current next_due still equals the after-valu
+  votes: (none yet)
+
+#9 [minor] (sidecar-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/db.mjs:273
+  The newest-only rule counts iterations of unrelated rooms, so with per-iteration room selection a Kitchen-only iteration cannot be deleted once a Bath-only one exists, although the restore would be safe.
+  scenario: Following the design's own flow (section 12: Kitchen iteration, then Bath iteration over the same window), the person notices the Kitchen one used the wrong start date and presses Delete on it: 409 not_newest. To fix Kitchen they must first delete the Bath ite
+  fix: Refuse with not_newest only when a newer iteration's activity_state_before shares an activity id with this iteration's snapshot (the only case where the rewind would reach past it): `SELECT activity_s
+  votes: (none yet)
+
+#10 [minor] (sidecar-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/routes.mjs:14
+  TAGS_MAX = 32 ignores the two automatic tags the page prepends, so 31 or 32 user tags pass validation and Yuvomi silently drops the last ones from every task.
+  scenario: createTaskForTodo (yuvomi-tasks.js:42) sends [cleaningplan, cleaningplan:<id>, ...userTags]; Yuvomi's normalizeTags (server/utils/task-tags.js:58) keeps the first MAX_TAGS = 32 and discards the rest without an error. A person who enters 32 tags gets a 201 from
+  fix: Set TAGS_MAX = 30 with a comment naming the two automatic tags, and adjust the 'iteration tags round trip and are validated' test to expect bad_tags at 31.
+  votes: (none yet)
+
+#11 [important] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/plan-view.js:146
+  Editing any field of an activity re-sends first_due = its current next_due (pre-filled at line 94), which makes db.mjs:170 reset anchor_day and silently reintroduces the monthly month-end drift that fix I-3 removed.
+  scenario: Monthly activity 'Descale kettle' first due 2026-01-31 (anchor_day 31). After January's iteration next_due is 2026-02-28 (clamped). A member edits the activity to change the assignee; the form sends first_due '2026-02-28'; updateActivity sets anchor_day = 28; 
+  fix: Render the stored value as data-next-due on the activity form and in bindPlanSection include first_due in the PATCH only when the input differs from it; as a second guard, in db.mjs updateActivity kee
+  votes: (none yet)
+
+#12 [important] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/index.js:163
+  The 'Tick at least one room' check redraws the whole iterations section, so the generate form is rebuilt from scratch (iterations-view.js:28, 43-60) with every room ticked again, the tags field emptied and the date reset, contradicting the error it just displayed; the same reset happens whenever the user clicks an iteration row while the form is open (index.js:159 -> withIterations -> drawIterations at line 133).
+  scenario: A member unticks the rooms, types tags 'week-46', submits with none ticked: the message says tick at least one room while all rooms show ticked and the tags are gone. Or: form filled in, the member clicks the previous iteration row to check what it covered, an
+  fix: Validate without re-rendering: setCustomValidity/reportValidity on the first room checkbox (or toggle an error element inside the form) instead of drawIterations(); and keep the form's live values in 
+  votes: (none yet)
+
+#13 [important] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/index.js:167
+  Once POST /iterations has succeeded, any later failure (fetchIterationTasks at yuvomi-tasks.js:71, the reloads at index.js:153, openIteration at 154, and in the delete flow a failed reload after the DELETE at 182-185) is shown as an error while state.iterations stays stale, so the new iteration is not listed, the next Generate defaults to the same window and creates an empty duplicate.
+  scenario: Yuvomi restarts right after the sidecar created iteration #5: the page shows 'HTTP 502' and the list still ends at #4. The member clicks Generate again; the default start is the day after #4, the sidecar creates #6 for the same dates with zero todos (next_due 
+  fix: In withIterations' error path run a best-effort await Promise.allSettled([reloadIterations(), reloadPlan()]) before the final drawIterations()/drawPlan(), so the list reflects what the sidecar holds e
+  votes: (none yet)
+
+#14 [important] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/index.js:106
+  A failing reloadPlan() after a successful write stores the error in formError, but the form was already closed (editing = null at line 104) and plan-view renders formError only inside a form (plan-view.js:70, 96), so the error is invisible and the plan list stays stale.
+  scenario: 'Add activity' -> POST 201 -> GET /plan fails because the sidecar container is restarting: the form closes, the new activity does not appear, no message is shown; the member adds it again and ends up with a duplicate activity that generates every task twice.
+  fix: Split the try: errors from fn() go to formError and keep the form open; errors from reloadPlan() set state.error so drawPlan shows mountLoadError with retry (or render formError at section level when 
+  votes: (none yet)
+
+#15 [minor] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/index.js:164
+  state.generating = false runs before withIterations' busy guard (line 130), so a generate submit sent while another iteration action is running is silently dropped and the form disappears with no message.
+  scenario: Form open, the member clicks an iteration row (the open takes a second), then presses Enter in the tags field: nothing is generated, and when the open finishes the form is gone.
+  fix: Render the form's submit button disabled while busy (iterations-view.js:56, as lines 40/83/84 already do), or make withIterations return false when busy and only clear generating when it actually ran.
+  votes: (none yet)
+
+#16 [minor] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/index.js:88
+  A failing openIteration(wanted) on page load is swallowed with .catch(() => {}), leaving ?iteration=N in the URL with nothing open and no error.
+  scenario: A member opens a shared link /m/cleaningplan?iteration=5 while Yuvomi's task list request fails once: the page shows the closed list with no hint why; only a manual reload reveals it.
+  fix: In the catch set state.iterationsError = err.message and clear the query with history.replaceState so the page says what happened.
+  votes: (none yet)
+
+#17 [minor] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/index.js:48
+  drawPlan() refocuses the first plan-form input on every call and is also called after generate (line 155) and delete (line 186), which re-renders an open plan form from stored values and moves focus into it.
+  scenario: An 'Add activity' form is half typed; the member generates an iteration (or deletes one) to see the effect: the typed values are gone and the caret jumps into the now-blank plan form.
+  fix: Call focus() only from onEdit, and when state.editing is set either skip the plan redraw after iteration actions or re-render only the activity rows' meta.
+  votes: (none yet)
+
+#18 [minor] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/yuvomi-tasks.js:56
+  fetchCompletions reads a single page of 200 household completions (the API's per-page maximum), so done rows of an iteration whose tasks were ticked off more than 200 completions ago lose 'done by X, when' and show only 'done'.
+  scenario: A family of four ticks off about ten tasks a day; three weeks later, opening the previous iteration shows plain 'done' for most rows although the history exists in Yuvomi.
+  fix: Page with before_at/before_id (next_cursor) until every done task id of the opened iteration is resolved or the page's oldest completed_at predates the iteration's start_date.
+  votes: (none yet)
+
+#19 [minor] (browser-correctness) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/yuvomi-tasks.js:46
+  assigned_to is sent for whatever default_assignee_id the activity stores; once that person is no longer a household member Yuvomi answers 400 for every todo of that activity (schemas.js: new assignees have to be household members), and the plan row only shows a blank where the name was.
+  scenario: A member account is removed from the household; every generation afterwards ends with 'N tasks could not be created (...)' until someone opens the activity and re-saves it with another assignee.
+  fix: Pass the member list (state.members) into createMissingTasks/createTaskForTodo and omit assigned_to when the id is not a current member; optionally mark the stale assignee on the plan row.
+  votes: (none yet)
+
+#20 [important] (platform-conformance) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/yuvomi-tasks.js:56
+  fetchCompletions reads only the first page of the household-wide completion feed (limit=200 is the API maximum) and ignores has_more/next_cursor, so 'done by X, when' silently degrades to plain 'done' for any iteration older than the last ~200 completions.
+  scenario: GET /api/v1/tasks/completions is newest-first across every task in the household (server/openapi/paths/tasks.js:68-80, server/routes/tasks.js:539-556 returns has_more and next_cursor {before_at, before_id}). A family of four ticking off chores, shopping and cl
+  fix: Page the feed: after the first call, follow next_cursor (before_at/before_id) until every done todo's yuvomi_task_id has been seen or the page's oldest completed_at is before the opened iteration's st
+  votes: (none yet)
+
+#21 [important] (platform-conformance) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/yuvomi-tasks.js:46
+  createTaskForTodo sends assigned_to for whatever default_assignee_id the sidecar stored, but POST /api/v1/tasks rejects an id that is no longer a household member with 400, so every todo of an activity whose default person left the household fails on each generation and on every 'Create missing tasks' retry.
+  scenario: Yuvomi validates assigned_to against the current member list (server/routes/tasks.js:1211-1214, nonMemberMessage). A member is removed from the household; their activities keep default_assignee_id in the sidecar (vAssignee in service/app/routes.mjs:49 only che
+  fix: In the page, hand state.members to createTasks/createMissingTasks and omit assigned_to when todo.assignee_id is not in the member list (the task is then simply unassigned, matching the 'anyone' row la
+  votes: (none yet)
+
+#22 [minor] (platform-conformance) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/iterations-view.js:103
+  The todo row uses a bare <span class="check-ring"> without the carrier box core always gives that class, so the ring draws as a collapsed bordered sliver, and without check-ring--static it takes the hover accent although it is not clickable.
+  scenario: Yuvomi only defines .check-ring::after (public/styles/list-row.css:957) and relies on a carrier class with display:grid/flex and a size (.first-steps__ring dashboard.css:2968, .task-status-btn tasks.css:675). In the module the span is a flex item but its ::aft
+  fix: Render <span class="check-ring check-ring--static"> and add to style.css: .cleaningplan-todo .check-ring { display: grid; place-items: center; flex: none; width: var(--space-5); height: var(--space-5)
+  votes: (none yet)
+
+#23 [minor] (platform-conformance) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/plan-view.js:87
+  <select class="select"> uses a class Yuvomi does not define; core styles selects only as select.input / select.form-input, so the unit, assignee (plan-view.js:90) and length (iterations-view.js:51) selects render as native controls next to styled inputs.
+  scenario: public/styles/layout.css:8837-8916 style .input/.form-input and select.input/select.form-input (field skin, custom chevron, equal 48px/40px height, option colors for dark mode #2022); no stylesheet under public/styles defines .select. The three selects show th
+  fix: Use class="input" on the three select elements.
+  votes: (none yet)
+
+#24 [minor] (platform-conformance) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/index.js:26
+  The read-only hint paragraph is placed directly in .app-page__body outside any page section, so it is not capped by the page measure while the two sections under it are.
+  scenario: MODULES.md says to build the body with the page-layout helpers; renderPageSection/renderListSection add .page-measure (public/utils/page-layout.js:203-234, layout.css:3623). For a read-only member on a wide viewport the hint runs across the full body width and
+  fix: Render the hint inside the plan section (pass it into renderPlanSection) or wrap it with renderPageSection({ content }) so it shares the measure.
+  votes: (none yet)
+
+#25 [minor] (platform-conformance) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/routes.mjs:14
+  TAGS_MAX = 32 counts only the household's tags, but Yuvomi caps a task at 32 tags in total and the module prepends two automatic ones, so the last one or two user tags are silently dropped from every task when 31 or 32 are entered.
+  scenario: server/utils/task-tags.js:29 (MAX_TAGS = 32) truncates instead of rejecting; createTaskForTodo (yuvomi-tasks.js:42) sends [cleaningplan, cleaningplan:<id>, ...tags]. An iteration created with 32 tags is accepted by the sidecar and stored, its row lists all 32,
+  fix: Set TAGS_MAX to 30 (and say so in the bad_tags message / form placeholder), keeping the two automatic tags inside Yuvomi's limit.
+  votes: (none yet)
+
+#26 [minor] (platform-conformance) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/client.js:16
+  The sidecar client reads the CSRF token from document.cookie on every write and has no refresh/retry path, unlike Yuvomi's /api.js which keeps the token in memory because document.cookie is stale on iOS Safari/PWA after resume and retries once on 403 csrf_invalid.
+  scenario: public/api.js:20-30 and :124-151 document the iOS PWA desync and re-read the token from the 403 response header or GET /auth/me before retrying. A member using the home-screen PWA on iPhone comes back the next day: Yuvomi's own pages keep working, but every pl
+  fix: On a 403 with reason csrf_invalid, fetch /api/v1/auth/me (credentials same-origin), take csrfToken from the body, and retry the request once with that header, mirroring api.js.
+  votes: (none yet)
+
+#27 [minor] (platform-conformance) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/iterations-view.js:99
+  todo.doneBy is rendered with an empty name when the completion carries no person, which Yuvomi documents for completions taken over from an inbound CalDAV reminder, producing 'done by , 3 Nov 2026, 14:02'.
+  scenario: server/openapi/paths/tasks.js:73: a completion with source 'caldav' 'carries no person'; person_name and user_name are both null (server/services/task-completions.js:190-199). A household that syncs Tasks to a phone reminders app and ticks a cleaning task ther
+  fix: When neither person_name nor user_name is set, fall back to tt('todo.done') or add a key such as todo.doneAt 'done, {{when}}' in both locales.
+  votes: (none yet)
+
+#28 [critical] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/.github/workflows/ci.yml:17
+  The test command passes bare directories to `node --test`; on Node 24 (the CI pin and the README's stated minimum) the runner does not expand directories, so the job fails and the image job behind `needs: test` never publishes.
+  scenario: Node 24.x's createTestFileList (lib/internal/test_runner/runner.js on the v24.x branch) hands the positional arguments straight to Glob and contains no statSync/isDirectory handling; Glob returns the literal paths `service/test` and `test/module` and the runne
+  fix: Use explicit quoted globs in both ci.yml:17 and README.md:47: `node --import ./test/module/register.mjs --test "service/test/*.test.mjs" "test/module/*.test.mjs"`. Do not fall back to a bare `--test`:
+  votes: (none yet)
+
+#29 [important] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/README.md:95
+  'installs the latest release' is not true of this pipeline: tagging creates no GitHub Release, and Yuvomi's installer falls back to the default branch when there is none.
+  scenario: ci.yml:21-23 only builds an image on a `v*` tag; nothing creates a Release object. Yuvomi's resolveDefaultRef (ulsklyc/yuvomi server/services/module-github.js:317-331) asks `releases/latest`, gets nothing, and installs `repo.default_branch`. A household pastin
+  fix: Add a release step to the tag workflow (a `release` job with `permissions: contents: write` running `gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes` with `GH_TOKEN: ${{ github.toke
+  votes: (none yet)
+
+#30 [important] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/.github/workflows/ci.yml:40
+  The first push to ghcr.io/la3mmchen/yuvomi-cleaningplan-api creates a private package; households following README step 1 get 'denied' on pull until the owner changes visibility once.
+  scenario: GitHub's packages docs: for a package scoped to a personal account 'the default visibility is private and only you can see the package', and a linked repository lends its access permissions 'but not the visibility'. So after the first `v0.1.0` run, `docker com
+  fix: After the first tag run, open the package on GitHub -> Package settings -> Change visibility -> Public (GITHUB_TOKEN cannot do this from the workflow). Add one line to README's Releases paragraph and 
+  votes: (none yet)
+
+#31 [important] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/Dockerfile:7
+  The image runs as uid 1000 and only a named volume inherits the /data ownership; a bind mount, which is Yuvomi's own convention, leaves /data root-owned and the sidecar crash-loops with an unhelpful message.
+  scenario: Yuvomi's compose uses `${DATA_DIR:-./data}:/data` and its entrypoint chowns volumes at start (ulsklyc/yuvomi entrypoint.sh:17), so operators expect bind mounts to just work. An operator who writes `- ./cleaningplan-data:/data` (easier to back up than a named v
+  fix: Either add an entrypoint that, when started as root, chowns /data and drops to node (setpriv, as Yuvomi does) so both mount styles work, or document in README step 1: 'the sidecar runs as uid 1000; fo
+  votes: (none yet)
+
+#32 [important] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/README.md:81
+  The install snippet pins the sidecar to `:latest` while the module page is pinned by its install, and there is no upgrade guidance; the two halves drift silently because the sidecar ignores fields it does not know.
+  scenario: Yuvomi never updates an installed module ('Nothing updates itself later'), while Docker never pulls `:latest` on its own either, so the two versions are independent and with `:latest` the operator cannot even see which sidecar runs. Next release: the admin rei
+  fix: Pin the snippet to the same number as module.json (`image: ghcr.io/la3mmchen/yuvomi-cleaningplan-api:0.1.0`), add an 'Upgrading' paragraph (change the image tag and `docker compose up -d` first, then 
+  votes: (none yet)
+
+#33 [important] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/README.md:93
+  'TRUST_PROXY=1, its default' tells operators there is nothing to change, but both Yuvomi installers write TRUST_PROXY=loopback for direct-access installs, and those are exactly the installs that gain a proxy in step 2.
+  scenario: ulsklyc/yuvomi docs/installation.md:1274: a base URL without https means `SESSION_SECURE=false, TRUST_PROXY=loopback`. An operator with such a `.env` adds Caddy per step 2 and keeps `loopback`; the proxy's 172.x address is not loopback, so Yuvomi ignores X-For
+  fix: Replace the parenthesis with: 'Check `.env`: if it says `TRUST_PROXY=loopback` (what the installers write for direct access), set `TRUST_PROXY=1`, and `SESSION_SECURE=true` if the proxy terminates HTT
+  votes: (none yet)
+
+#34 [minor] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/.github/workflows/ci.yml:43
+  `type=raw,value=latest` moves `latest` on every tag including pre-releases, and the comment at line 20 says `:<tag>` although the semver pattern publishes `0.1.0` without the `v`.
+  scenario: A `v0.2.0-rc1` tag retags `latest`, which the README snippet (line 81) tells every household to run; metadata-action's default flavor `latest=auto` already adds `latest` for non-prerelease semver tags. A reader of the ci.yml comment expects `:v0.1.0` and gets 
+  fix: Delete the `type=raw,value=latest` line (keep the semver line; `latest` is added automatically for stable versions) and change the comment to ':<version> (the tag without its v) and :latest'.
+  votes: (none yet)
+
+#35 [minor] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/Dockerfile:11
+  HEALTHCHECK hardcodes port 3100 while the server honours PORT, so a container started with another PORT is permanently unhealthy.
+  scenario: An operator sets `PORT=8080` (server.mjs:11 accepts it) to avoid a clash; the healthcheck keeps probing 3100, the container shows `unhealthy`, and any `depends_on: condition: service_healthy` in their stack never resolves.
+  fix: Probe `http://localhost:${process.env.PORT || 3100}/api/extensions/cleaningplan/health` inside the `node -e` script (template literal), or drop the ENV default and read it the same way in both places.
+  votes: (none yet)
+
+#36 [minor] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/README.md:102
+  'tag vX.Y.Z (matching version in module.json)' is a convention nothing enforces, and the admin-facing replace dialog is the only place the mismatch shows.
+  scenario: A tag is pushed without bumping modules/cleaningplan/module.json:5; the image gets the new number, the module keeps 0.1.0, and Yuvomi's replace prompt ('names the installed and the incoming version') shows 0.1.0 -> 0.1.0, so the admin cannot tell the reinstall
+  fix: Add a step to the image job before the build: `test "v$(node -p "require('./modules/cleaningplan/module.json').version")" = "$GITHUB_REF_NAME" || { echo 'module.json version does not match the tag'; e
+  votes: (none yet)
+
+#37 [minor] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/docker-compose.yml:14
+  The compose comment carries an absolute personal path (`/Users/akoehler/...`) that no other contributor has.
+  scenario: Someone cloning the public repository follows the comment to build Yuvomi from source and gets a path that does not exist on their machine.
+  fix: Reword to a relative example: 'replace `image:` with `build: ../yuvomi` pointing at a local clone of ulsklyc/yuvomi'.
+  votes: (none yet)
+
+#38 [minor] (packaging-release) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/docker-compose.yml:41
+  The comment claims the dev stack exercises 'Add custom module', but Yuvomi refuses to replace the hand-copied folder, and anything installed that way lands untracked-but-unignored in the repo's modules/ tree.
+  scenario: With `./modules:/app/modules` bind-mounted, modules/cleaningplan has no `.yuvomi-install.json`, so both install routes answer `409 not_web_installed` for this module (MODULES.md, 'Disabled until approved, replacing and updating'); installing any other module f
+  fix: Reword the comment ('other modules, or this one after removing the folder from modules/') and add `modules/*/.yuvomi-install.json`, `modules/.backup-*` and `modules/.install-*` to .gitignore.
+  votes: (none yet)
+
+#39 [minor] (tests) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/test/routes.test.mjs:15
+  One SQLite database is shared by every test in routes.test.mjs and cleaned up inline, so test order is load-bearing and one failing assertion cascades into unrelated tests.
+  scenario: 'activity validation' (lines 81-100) deletes its Bath room only on line 99; if any assertion on lines 85-98 fails, Bath leaks and 'mutations without csrf' (line 124, expects {rooms: []}) and 'iteration generation end to end' (line 155, indexes rooms[0].activit
+  fix: Open a fresh openDb(':memory:') in beforeEach (createHandler can take a { get db() } holder, or rebuild the server per test, it is cheap), move the inline DELETE cleanups into t.after, and give the ov
+  votes: (none yet)
+
+#40 [minor] (tests) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/test/db.test.mjs:184
+  migrate() adding the new iterations.tags and iterations.room_ids columns to a pre-feature database is never executed by any test; only anchor_day is.
+  scenario: Every test opens a fresh :memory: database where CREATE TABLE IF NOT EXISTS already carries both columns, so the ALTER TABLE branch for ADDED_COLUMNS entries at service/app/db.mjs:59-60 (loop at :67-70) never runs under test. A household that generated iterati
+  fix: Extend the anchor_day test: also DROP COLUMN tags and room_ids, INSERT a legacy iterations row before migrate(db), then assert listIterations(db)[0] deep-equals tags: [] and room_ids: [], that createI
+  votes: (none yet)
+
+#41 [minor] (tests) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/modules/cleaningplan/lib/iterations-view.js:126
+  The generate form's submit parsing (end_date arithmetic, 'all rooms ticked means no limit', the no_rooms refusal, tags parsing) lives inside the DOM listener and has no test at all.
+  scenario: Lines 126-135 decide what the sidecar stores: end_date = start + length - 1, room_ids = [] when roomIds.length === roomCount (roomCount read back from data-room-count on line 47), no_rooms when roomCount > 0 and nothing is ticked, tags via parseTags(data.get('
+  fix: Move the pure part into format.js as buildGenerateRequest({ start_date, length, tags, roomIds, roomCount }) returning { start_date, end_date, tags, room_ids, no_rooms }, call it from the listener, and
+  votes: (none yet)
+
+#42 [minor] (tests) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/routes.mjs:14
+  The sidecar allows 32 user tags per iteration, but Yuvomi keeps 32 tags per task in total and the module prepends two automatic ones, so the last one or two user tags vanish without an error; the test fake accepts any tag list so no test can notice.
+  scenario: vTags (routes.mjs:67-83) rejects only >32 after dedupe. createTaskForTodo (modules/cleaningplan/lib/yuvomi-tasks.js:42) sends ['cleaningplan', 'cleaningplan:<id>', ...tags]; Yuvomi's normalizeTags (ulsklyc/yuvomi server/utils/task-tags.js:28,80) stops at 32 an
+  fix: Set TAGS_MAX to 30 in routes.mjs with a comment (Yuvomi's 32 minus the two automatic tags) and reject '.'/'..' in vTags; add routes.test.mjs cases: 30 tags -> 201, 31 -> bad_tags, ['.'] -> bad_tags; o
+  votes: (none yet)
+
+#43 [minor] (tests) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/app/auth.mjs:31
+  The security-relevant default 'no permissions.modules entry for ext:cleaningplan means write' is not pinned by any auth test.
+  scenario: accessFrom returns 'write' for any level other than 'none'/'read', including an absent entry, which matches MODULES.md:185 (deny on 'none', read-only on 'read'). service/test/auth.test.mjs:15-25 covers write/read/none/admin via the fake's sid cookie but never 
+  fix: Add an auth.test.mjs case using startFakeYuvomi with a handler that answers meResponse() minus permissions.modules['ext:cleaningplan'] (and one with permissions missing entirely) and assert access ===
+  votes: (none yet)
+
+#44 [minor] (tests) /Users/akoehler/repos/github.com/la3mmchen/yuvomi-cleaningplan/service/test/db.test.mjs:115
+  Design section 6.4 'Deleting a room or an activity never touches generated tasks' and the delete-iteration restore for activities that no longer exist are not tested anywhere.
+  scenario: service/app/db.mjs:39 relies on ON DELETE SET NULL for todos.activity_id and db.mjs:276-278 updates next_due for snapshot ids that may have been deleted meanwhile. No test in db.test.mjs or routes.test.mjs deletes a room or activity after createIteration and t
+  fix: Add a db test: create room + activity, createIteration, deleteRoom, then assert getIteration(db, id).todos still has its rows with activity_id null and the original names, and deleteIteration(db, id) 
+  votes: (none yet)
+
+--- finder notes ---
+- security: Ran the suite read-only: 86/86 pass. Checked and found sound: CSRF gate (Origin must equal the normalised PUBLIC_ORIGIN and X-CSRF-Token must equal the csrf-token cookie, checked before access level and before the body is read; a cross-site page can neither read the SameSite=Lax non-httpOnly cookie 
+- sidecar-correctness: Ran the suite read-only: 86/86 pass. Checked and found sound: migrate() is idempotent and safe on pre-feature databases (ADD COLUMN NOT NULL DEFAULT '[]' is valid, '[]' means all rooms for old iterations, NULL anchor_day falls back to next_due's day, the partial unique index is created before any li
+- browser-correctness: Ran the suite read-only: 86/86 pass. Traced index.js, iterations-view.js, plan-view.js, yuvomi-tasks.js, client.js and format.js against the spec (sections 6, 8, 11, 12), progress.md's deferred minors (none re-reported), Yuvomi's api.js, MODULES.md, routes/tasks.js, task-scope.js, visibility.js, csr
+- platform-conformance: Checked and found sound: module.json against MODULES.md and the normaliser (server/services/modules.js, module-capabilities.js: id/entry/style, accent #RRGGBB, icon, menu.labelKey regex, page composition/width, capabilities.permissions.module present with api.prefix exactly /api/extensions/cleaningp
+- packaging-release: Checked and found sound: service/Dockerfile ships only server.mjs + app/ (tests excluded both by the explicit COPYs and service/.dockerignore), runs as the node user, chowns /data so a fresh named volume inherits uid 1000, exposes 3100, handles SIGTERM/SIGINT in server.mjs; multi-arch build is COPY-
+- tests: Suite run: node --import ./test/module/register.mjs --test service/test test/module -> 86 pass, 0 fail (with a DEP0205 warning about module.register, harmless on the Node 24 that ci.yml pins). Stub/real alignment checked against ulsklyc/yuvomi and found sound: the real api.get/post/delete return the

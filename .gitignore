@@ -1,0 +1,9 @@
+# Local dev instance state (SQLite db, backups) - see README
+.dev/
+.DS_Store
+# plan-execution scratch (ledger, briefs)
+.superpowers/
+# Written by Yuvomi's web installer into the mounted modules folder
+modules/*/.yuvomi-install.json
+modules/.backup-*
+modules/.install-*

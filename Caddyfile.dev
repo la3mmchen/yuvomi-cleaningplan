@@ -1,0 +1,10 @@
+# Dev reverse proxy: one origin for Yuvomi and the cleaningplan sidecar.
+# The one rule a production proxy needs is the first handle block.
+:3000 {
+	handle /api/extensions/cleaningplan/* {
+		reverse_proxy cleaningplan-api:3100
+	}
+	handle {
+		reverse_proxy yuvomi:3000
+	}
+}

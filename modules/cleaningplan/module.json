@@ -1,0 +1,39 @@
+{
+  "manifestVersion": 1,
+  "id": "cleaningplan",
+  "name": "Cleaning plan",
+  "version": "0.1.0",
+  "description": "Rooms, activities and schedules; generates each iteration's to-dos as Yuvomi tasks.",
+  "entry": "index.js",
+  "style": "style.css",
+  "icon": "sparkles",
+  "accent": "#0EA5E9",
+  "i18n": {
+    "defaultLocale": "en"
+  },
+  "menu": {
+    "show": true,
+    "label": "Cleaning plan",
+    "labelKey": "menu",
+    "icon": "sparkles",
+    "order": 100
+  },
+  "page": {
+    "composition": "data",
+    "width": "content",
+    "navigation": "standard",
+    "responsive": "standard"
+  },
+  "capabilities": {
+    "permissions": {
+      "module": {
+        "label": "Cleaning plan",
+        "labelKey": "module",
+        "icon": "sparkles"
+      }
+    },
+    "api": {
+      "prefix": "/api/extensions/cleaningplan"
+    }
+  }
+}

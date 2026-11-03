@@ -1,0 +1,112 @@
+/* Cleaning plan page. Only cleaningplan- prefixed rules; every value is a Yuvomi token. */
+.cleaningplan-section-title {
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-3);
+}
+.cleaningplan-readonly {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-3);
+}
+.cleaningplan-room { margin-bottom: var(--space-4); }
+.cleaningplan-room__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.cleaningplan-activity--inactive .list-row__name { color: var(--color-text-secondary); }
+.cleaningplan-inactive {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin-left: var(--space-1);
+}
+.cleaningplan-add { padding: var(--space-2) 0; }
+.cleaningplan-form {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  margin: var(--space-2) 0;
+}
+.cleaningplan-form__interval {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.cleaningplan-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+.cleaningplan-form__error { margin: 0; }
+
+/* Iterations */
+.cleaningplan-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.cleaningplan-section-head .cleaningplan-section-title { margin: 0; }
+.cleaningplan-iterations { margin-top: var(--space-6); }
+.cleaningplan-progress {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+.cleaningplan-iteration__open {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.cleaningplan-iteration__detail {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--color-surface-2);
+  margin-bottom: var(--space-2);
+}
+.cleaningplan-day__title {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  margin: var(--space-3) 0 var(--space-1);
+}
+.cleaningplan-todo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.cleaningplan-todo--done .list-row__name {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+.cleaningplan-todo--missing .list-row__meta,
+.cleaningplan-todo--removed .list-row__meta { color: var(--color-danger); }
+.cleaningplan-muted {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.cleaningplan-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+.cleaningplan-todo .check-ring {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--space-5);
+  height: var(--space-5);
+}
+.cleaningplan-readonly-section[hidden] { display: none; }
