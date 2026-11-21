@@ -79,7 +79,7 @@ Members with `ext:cleaningplan` = `read` see everything without the controls.
    ```yaml
    services:
      cleaningplan-api:
-       image: ghcr.io/la3mmchen/yuvomi-cleaningplan-api:0.1.0
+       image: ghcr.io/la3mmchen/yuvomi-cleaningplan-api:0.1.1
        restart: unless-stopped
        environment:
          YUVOMI_INTERNAL_URL: http://yuvomi:3000
