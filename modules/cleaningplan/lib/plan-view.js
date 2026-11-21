@@ -3,8 +3,7 @@
 // delegated listeners once on the mount so re-rendering never re-binds.
 import { t } from '/i18n.js';
 import { esc } from '/utils/html.js';
-import { renderListSection } from '/utils/page-layout.js';
-import { emptyStateHTML } from '/utils/empty-state.js';
+import { renderListSection, emptyStateHTML } from './layout.js';
 import { scheduleLabel, memberName } from './format.js';
 
 const tt = (key, params) => t(`extensions.cleaningplan.${key}`, params);

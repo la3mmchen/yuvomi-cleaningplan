@@ -29,7 +29,7 @@ Roles and permissions.
 Requires Docker. Everything answers on http://localhost:3000.
 
 ```sh
-docker compose up -d --build   # caddy + yuvomi 2.84.0 + sidecar
+docker compose up -d --build   # caddy + yuvomi 2.93.0 + sidecar
 ./scripts/dev-setup.sh         # seeds admin + members sam, kim (all: password cleaningplan-dev)
 docker compose logs -f         # module validation errors show at Yuvomi startup and on rescan
 docker compose down -v && rm -rf .dev && docker compose up -d   # wipe both databases

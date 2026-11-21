@@ -3,8 +3,6 @@ const MAP = {
   '/i18n.js': 'i18n.js',
   '/api.js': 'api.js',
   '/utils/html.js': 'html.js',
-  '/utils/page-layout.js': 'page-layout.js',
-  '/utils/empty-state.js': 'empty-state.js',
 };
 export async function resolve(specifier, context, next) {
   if (MAP[specifier]) return { url: new URL(MAP[specifier], STUBS).href, shortCircuit: true };

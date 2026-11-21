@@ -3,8 +3,7 @@
 import { api } from '/api.js';
 import { t } from '/i18n.js';
 import { esc } from '/utils/html.js';
-import { renderPageHeader, renderPageTitle, renderPageBody, renderPageSection } from '/utils/page-layout.js';
-import { mountLoadError } from '/utils/empty-state.js';
+import { renderPageHeader, renderPageTitle, renderPageBody, renderPageSection, mountLoadError } from './lib/layout.js';
 import { ext } from './lib/client.js';
 import { renderPlanSection, bindPlanSection } from './lib/plan-view.js';
 import { renderIterationsSection, bindIterationsSection } from './lib/iterations-view.js';

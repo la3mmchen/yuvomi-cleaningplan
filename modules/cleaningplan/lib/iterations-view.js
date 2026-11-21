@@ -2,8 +2,7 @@
 // one, its to-dos grouped by day with the state read back from Yuvomi.
 import { t } from '/i18n.js';
 import { esc } from '/utils/html.js';
-import { renderListSection } from '/utils/page-layout.js';
-import { emptyStateHTML } from '/utils/empty-state.js';
+import { renderListSection, emptyStateHTML } from './layout.js';
 import { groupByDay, todoState, memberName, roomNames, buildGenerateRequest } from './format.js';
 
 const tt = (key, params) => t(`extensions.cleaningplan.${key}`, params);

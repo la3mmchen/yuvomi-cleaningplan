@@ -7,7 +7,7 @@
 #
 # Three containers on one origin, http://localhost:3000:
 #   caddy            reverse proxy; /api/extensions/cleaningplan/* -> sidecar, rest -> Yuvomi
-#   yuvomi           official image 2.84.0 with ./modules mounted (rescanned at runtime)
+#   yuvomi           official image 2.93.0 with ./modules mounted (rescanned at runtime)
 #   cleaningplan-api the sidecar from ./service, own SQLite file in a named volume
 #
 # To run Yuvomi core from a local clone of ulsklyc/yuvomi instead of the image, replace
@@ -26,7 +26,7 @@ services:
       - cleaningplan-api
 
   yuvomi:
-    image: ghcr.io/ulsklyc/yuvomi:2.84.0
+    image: ghcr.io/ulsklyc/yuvomi:2.93.0
     container_name: yuvomi-cleaningplan-dev
     restart: unless-stopped
     volumes:
