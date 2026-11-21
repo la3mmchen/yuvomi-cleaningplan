@@ -11,6 +11,8 @@
   "room.add": "Raum hinzufügen",
   "room.name": "Raum",
   "activity.add": "Tätigkeit hinzufügen",
+  "activity.note": "Notizen",
+  "activity.notePlaceholder": "z. B. * Zeitungen weg, Gläser weg",
   "activity.name": "Tätigkeit",
   "activity.interval": "Wiederholt sich alle",
   "activity.unit": "Einheit",

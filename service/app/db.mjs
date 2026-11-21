@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS activities (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   room_id             INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
   name                TEXT    NOT NULL,
+  note                TEXT,
   default_assignee_id INTEGER,
   target_time         TEXT,
   interval_value      INTEGER NOT NULL,
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS todos (
   room_name      TEXT    NOT NULL,
   activity_name  TEXT    NOT NULL,
   title          TEXT    NOT NULL,
+  note           TEXT,
   due_date       TEXT    NOT NULL,
   due_time       TEXT,
   assignee_id    INTEGER,
@@ -58,6 +60,8 @@ const ADDED_COLUMNS = [
   ['activities', 'anchor_day', 'INTEGER'],
   ['iterations', 'tags', "TEXT NOT NULL DEFAULT '[]'"],
   ['iterations', 'room_ids', "TEXT NOT NULL DEFAULT '[]'"],
+  ['activities', 'note', 'TEXT'],
+  ['todos', 'note', 'TEXT'],
 ];
 
 const TITLE_MAX = 200;
@@ -134,6 +138,7 @@ function activityRow(row) {
     id: row.id,
     room_id: row.room_id,
     name: row.name,
+    note: row.note,
     default_assignee_id: row.default_assignee_id,
     target_time: row.target_time,
     next_due: row.next_due,
@@ -144,7 +149,7 @@ function activityRow(row) {
   };
 }
 
-const ACTIVITY_SELECT = 'SELECT id, room_id, name, default_assignee_id, target_time, interval_value, interval_unit, next_due, anchor_day, active, sort_order FROM activities';
+const ACTIVITY_SELECT = 'SELECT id, room_id, name, note, default_assignee_id, target_time, interval_value, interval_unit, next_due, anchor_day, active, sort_order FROM activities';
 
 function getActivity(db, id) {
   return activityRow(db.prepare(`${ACTIVITY_SELECT} WHERE id = ?`).get(id));
@@ -154,10 +159,10 @@ export function createActivity(db, roomId, input) {
   if (!getRoom(db, roomId)) return null;
   const max = db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM activities WHERE room_id = ?').get(roomId).m;
   const { lastInsertRowid } = db.prepare(`
-    INSERT INTO activities (room_id, name, default_assignee_id, target_time, interval_value, interval_unit, next_due, anchor_day, active, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO activities (room_id, name, note, default_assignee_id, target_time, interval_value, interval_unit, next_due, anchor_day, active, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    roomId, input.name, input.default_assignee_id ?? null, input.target_time ?? null,
+    roomId, input.name, input.note ?? null, input.default_assignee_id ?? null, input.target_time ?? null,
     input.interval_value, input.interval_unit, input.first_due, dayOfMonth(input.first_due), input.active === false ? 0 : 1, max + 1,
   );
   return getActivity(db, Number(lastInsertRowid));
@@ -166,7 +171,7 @@ export function createActivity(db, roomId, input) {
 export function updateActivity(db, id, patch) {
   const current = db.prepare(`${ACTIVITY_SELECT} WHERE id = ?`).get(id);
   if (!current) return null;
-  const next = { ...current, ...pick(patch, ['name', 'default_assignee_id', 'target_time', 'interval_value', 'interval_unit', 'sort_order']) };
+  const next = { ...current, ...pick(patch, ['name', 'note', 'default_assignee_id', 'target_time', 'interval_value', 'interval_unit', 'sort_order']) };
   // The edit form sends the date it was shown; only a different date is a phase change
   // (re-anchoring on the clamped Feb 28 would bring back the month-end drift).
   if (patch.first_due !== undefined && patch.first_due !== current.next_due) {
@@ -175,9 +180,9 @@ export function updateActivity(db, id, patch) {
   }
   if (patch.active !== undefined) next.active = patch.active ? 1 : 0;
   db.prepare(`
-    UPDATE activities SET name = ?, default_assignee_id = ?, target_time = ?, interval_value = ?, interval_unit = ?,
+    UPDATE activities SET name = ?, note = ?, default_assignee_id = ?, target_time = ?, interval_value = ?, interval_unit = ?,
       next_due = ?, anchor_day = ?, active = ?, sort_order = ? WHERE id = ?
-  `).run(next.name, next.default_assignee_id, next.target_time, next.interval_value, next.interval_unit,
+  `).run(next.name, next.note, next.default_assignee_id, next.target_time, next.interval_value, next.interval_unit,
     next.next_due, next.anchor_day, next.active, next.sort_order, id);
   return getActivity(db, id);
 }
@@ -206,13 +211,13 @@ const ITERATION_SELECT = `
 function todoRow(row) {
   return {
     id: row.id, iteration_id: row.iteration_id, activity_id: row.activity_id,
-    room_name: row.room_name, activity_name: row.activity_name, title: row.title,
+    room_name: row.room_name, activity_name: row.activity_name, title: row.title, note: row.note,
     due_date: row.due_date, due_time: row.due_time, assignee_id: row.assignee_id,
     yuvomi_task_id: row.yuvomi_task_id,
   };
 }
 
-const TODO_SELECT = 'SELECT id, iteration_id, activity_id, room_name, activity_name, title, due_date, due_time, assignee_id, yuvomi_task_id FROM todos';
+const TODO_SELECT = 'SELECT id, iteration_id, activity_id, room_name, activity_name, title, note, due_date, due_time, assignee_id, yuvomi_task_id FROM todos';
 
 function jsonArray(text) {
   try { const v = JSON.parse(text); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -245,14 +250,14 @@ export function createIteration(db, { start_date, end_date, created_by, tags = [
     ).run(start_date, end_date, created_by, JSON.stringify(snapshot), JSON.stringify(tags), JSON.stringify(room_ids));
     const iterationId = Number(lastInsertRowid);
     const insertTodo = db.prepare(`
-      INSERT INTO todos (iteration_id, activity_id, room_name, activity_name, title, due_date, due_time, assignee_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO todos (iteration_id, activity_id, room_name, activity_name, title, note, due_date, due_time, assignee_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const advance = db.prepare('UPDATE activities SET next_due = ? WHERE id = ?');
     for (const { room, activity } of active) {
       const { dates, next_due } = generate(activity, start_date, end_date);
       for (const date of dates) {
-        insertTodo.run(iterationId, activity.id, room.name, activity.name, taskTitle(room.name, activity.name),
+        insertTodo.run(iterationId, activity.id, room.name, activity.name, taskTitle(room.name, activity.name), activity.note,
           date, activity.target_time, activity.default_assignee_id);
       }
       advance.run(next_due, activity.id);

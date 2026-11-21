@@ -9,6 +9,7 @@ const plan = {
     activities: [{
       id: 10, room_id: 1, name: 'Vac "x" & more', default_assignee_id: 2, target_time: '18:00',
       next_due: '2026-11-03', active: true, sort_order: 0, schedule: { interval_value: 2, interval_unit: 'days' },
+      note: '* papers <away>\n* glasses',
     }],
   }],
 };
@@ -62,4 +63,11 @@ test('activity form carries the stored next due so an unchanged date is not re-s
   const html = renderPlanSection({ plan, members, canWrite: true, editing: { kind: 'activity', id: 10, roomId: 1 } });
   assert.ok(html.includes('data-next-due="2026-11-03"'));
   assert.ok(!html.includes('class="select"'));
+});
+
+test('activity note shows escaped under the row and prefilled in the form', () => {
+  const row = renderPlanSection({ plan, members, canWrite: false, editing: null });
+  assert.ok(row.includes('cleaningplan-activity__note">* papers &lt;away&gt;\n* glasses</div>'));
+  const form = renderPlanSection({ plan, members, canWrite: true, editing: { kind: 'activity', id: 10, roomId: 1 } });
+  assert.ok(/<textarea[^>]*name="note"[^>]*>\* papers &lt;away&gt;\n\* glasses<\/textarea>/.test(form));
 });

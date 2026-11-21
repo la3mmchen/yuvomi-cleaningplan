@@ -49,7 +49,9 @@ node --import ./test/module/register.mjs --test "service/test/*.test.mjs" "test/
 
 ## Using it
 
-1. **Plan.** Add a room, then its activities: name, "repeats every N days/weeks/months",
+1. **Plan.** Add a room, then its activities: name, an optional note (e.g.
+   `* newspapers away, glasses away`; shown under the activity and added to each generated
+   task's description, which Yuvomi renders as markdown), "repeats every N days/weeks/months",
    who usually does it, a time of day, and the date it is first due. The next due date is
    shown on each activity and moves forward as iterations are generated.
 2. **Generate iteration.** Pick a start date (defaults to the day after the last iteration),
@@ -79,7 +81,7 @@ Members with `ext:cleaningplan` = `read` see everything without the controls.
    ```yaml
    services:
      cleaningplan-api:
-       image: ghcr.io/la3mmchen/yuvomi-cleaningplan-api:0.1.1
+       image: ghcr.io/la3mmchen/yuvomi-cleaningplan-api:0.2.0
        restart: unless-stopped
        environment:
          YUVOMI_INTERNAL_URL: http://yuvomi:3000

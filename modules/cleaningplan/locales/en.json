@@ -11,6 +11,8 @@
   "room.add": "Add room",
   "room.name": "Room",
   "activity.add": "Add activity",
+  "activity.note": "Notes",
+  "activity.notePlaceholder": "e.g. * newspapers away, glasses away",
   "activity.name": "Activity",
   "activity.interval": "Repeats every",
   "activity.unit": "Unit",

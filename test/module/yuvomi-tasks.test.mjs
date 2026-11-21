@@ -177,3 +177,13 @@ test('fetchCompletions follows the cursor until the wanted tasks are resolved', 
   assert.equal(calls.length, 2);
   assert.ok(calls[1].includes('before_id=50'));
 });
+
+test('createMissingTasks appends the activity note to the task description', async () => {
+  const d = fakes();
+  const iteration = { id: 7, todos: [
+    { id: 1, title: 'Dining: Tidy table', room_name: 'Dining', activity_name: 'Tidy table', note: '* newspapers away, glasses away', due_date: '2026-11-03', due_time: null, assignee_id: null, yuvomi_task_id: null },
+  ] };
+  await createMissingTasks(iteration, { categoryKey: 'cleaning', deps: d });
+  const [post] = d.calls.filter((c) => c[0] === 'api.post');
+  assert.equal(post[2].description, 'extensions.cleaningplan.task.description(room=Dining,activity=Tidy table)\n\n* newspapers away, glasses away');
+});

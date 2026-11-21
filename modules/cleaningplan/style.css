@@ -43,6 +43,7 @@
   padding-top: var(--space-1);
 }
 .cleaningplan-form__error { margin: 0; }
+.cleaningplan-activity__note { white-space: pre-line; }
 
 /* Iterations */
 .cleaningplan-section-head {

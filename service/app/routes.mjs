@@ -9,6 +9,7 @@ import { dueDatesInWindow, isIsoDate } from './schedule.mjs';
 export const DEFAULT_PREFIX = '/api/extensions/cleaningplan';
 const BODY_LIMIT = 64 * 1024;
 const NAME_MAX = 100;
+const NOTE_MAX = 1000;    // goes into the Yuvomi task description (max 5000) after a short prefix
 const INTERVAL_MAX = 365;
 const WINDOW_MAX_DAYS = 92;
 const TAGS_MAX = 30;      // Yuvomi keeps at most 32 tags per task; two are the module's own
@@ -27,6 +28,15 @@ function vName(value) {
   const name = value.trim();
   if (name.length < 1 || name.length > NAME_MAX) throw bad('bad_name');
   return name;
+}
+
+// Free text shown under the activity and copied into each generated task's description.
+function vNote(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') throw bad('bad_note');
+  const note = value.trim();
+  if (note.length > NOTE_MAX) throw bad('bad_note');
+  return note || null;
 }
 
 function vSchedule(value) {
@@ -107,6 +117,7 @@ function daysInclusive(start, end) {
 function activityInput(body, { create }) {
   const out = {};
   if (create || body.name !== undefined) out.name = vName(body.name);
+  if (create || body.note !== undefined) out.note = vNote(body.note);
   if (create || body.schedule !== undefined) Object.assign(out, vSchedule(body.schedule));
   if (create || body.target_time !== undefined) out.target_time = vTime(body.target_time);
   if (create || body.default_assignee_id !== undefined) out.default_assignee_id = vAssignee(body.default_assignee_id);

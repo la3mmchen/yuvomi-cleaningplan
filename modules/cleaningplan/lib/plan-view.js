@@ -50,8 +50,9 @@ function renderActivityRow(activity, members, canWrite) {
     tt('activity.nextDue', { date: activity.next_due }),
   ].filter(Boolean).map(esc).join(' · ');
   const inactive = activity.active ? '' : ` <span class="cleaningplan-inactive">${esc(tt('activity.inactive'))}</span>`;
+  const note = activity.note ? `<div class="list-row__meta cleaningplan-activity__note">${esc(activity.note)}</div>` : '';
   return `<div class="list-row cleaningplan-activity${activity.active ? '' : ' cleaningplan-activity--inactive'}" data-activity-id="${activity.id}">
-    <div class="list-row__main"><div class="list-row__name">${esc(activity.name)}${inactive}</div><div class="list-row__meta">${meta}</div></div>
+    <div class="list-row__main"><div class="list-row__name">${esc(activity.name)}${inactive}</div><div class="list-row__meta">${meta}</div>${note}</div>
     ${canWrite ? `<div class="list-row__end">${iconButton('edit-activity', activity.id, tt('action.edit'), activity.room_id)}</div>` : ''}
   </div>`;
 }
@@ -80,6 +81,8 @@ function renderActivityForm(activity, roomId, members, formError) {
   return `<form class="cleaningplan-form" data-form="activity" data-id="${id}" data-room-id="${roomId}" data-next-due="${esc(activity?.next_due ?? '')}">
     <div class="form-row"><label class="form-label" for="cp-act-name">${esc(tt('activity.name'))}</label>
       <input class="input" id="cp-act-name" name="name" value="${esc(activity?.name ?? '')}" required maxlength="100" autocomplete="off"></div>
+    <div class="form-row"><label class="form-label" for="cp-act-note">${esc(tt('activity.note'))}</label>
+      <textarea class="input" id="cp-act-note" name="note" rows="3" maxlength="1000" placeholder="${esc(tt('activity.notePlaceholder'))}">${esc(activity?.note ?? '')}</textarea></div>
     <div class="form-row"><label class="form-label" for="cp-act-interval">${esc(tt('activity.interval'))}</label>
       <div class="cleaningplan-form__interval">
         <input class="input" id="cp-act-interval" type="number" name="interval_value" min="1" max="365" required value="${activity?.schedule.interval_value ?? 1}">
@@ -138,6 +141,7 @@ export function bindPlanSection(root, handlers, signal) {
     }
     const input = {
       name: String(data.get('name') ?? '').trim(),
+      note: String(data.get('note') ?? '').trim() || null,
       schedule: { interval_value: Number(data.get('interval_value')), interval_unit: String(data.get('interval_unit')) },
       default_assignee_id: data.get('default_assignee_id') ? Number(data.get('default_assignee_id')) : null,
       target_time: data.get('target_time') ? String(data.get('target_time')) : null,

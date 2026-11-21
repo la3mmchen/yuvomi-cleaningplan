@@ -91,6 +91,11 @@ test('activity validation', async () => {
   assert.equal((await post({ ...base, first_due: '2026-02-30' })).json.reason, 'bad_date');
   assert.equal((await post({ ...base, default_assignee_id: 'sam' })).json.reason, 'bad_assignee');
   assert.equal((await post({ ...base, default_assignee_id: 0 })).json.reason, 'bad_assignee');
+  assert.equal((await post({ ...base, note: 42 })).json.reason, 'bad_note');
+  assert.equal((await post({ ...base, note: 'x'.repeat(1001) })).json.reason, 'bad_note');
+  const noted = await post({ ...base, note: '  * newspapers away\n* glasses away  ' });
+  assert.equal(noted.json.data.note, '* newspapers away\n* glasses away');
+  assert.equal((await call('PATCH', `/activities/${noted.json.data.id}`, { body: { note: '   ' } })).json.data.note, null);
   const ok = await post({ ...base, target_time: null, default_assignee_id: null });
   assert.equal(ok.status, 201);
   assert.equal(ok.json.data.target_time, null);

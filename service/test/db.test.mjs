@@ -272,3 +272,30 @@ test('deleting a room keeps its generated todos and deleteIteration tolerates th
   assert.equal(kept.todos[0].room_name, 'Kitchen');
   assert.equal(deleteIteration(db, it.id), 'deleted');
 });
+
+test('activity note is stored, editable, clearable and copied onto generated todos', () => {
+  const db = openDb(':memory:');
+  const room = createRoom(db, { name: 'Dining' });
+  const act = createActivity(db, room.id, vacuum({ name: 'Tidy table', note: '* newspapers away, glasses away' }));
+  assert.equal(act.note, '* newspapers away, glasses away');
+  assert.equal(createActivity(db, room.id, vacuum()).note, null);
+  const generate = () => ({ dates: ['2026-11-03'], next_due: '2026-11-05' });
+  const it = createIteration(db, { start_date: '2026-11-03', end_date: '2026-11-04', created_by: 1, room_ids: [room.id], generate });
+  assert.equal(it.todos.find((t) => t.activity_id === act.id).note, '* newspapers away, glasses away');
+  assert.equal(updateActivity(db, act.id, { note: 'only glasses' }).note, 'only glasses');
+  assert.equal(updateActivity(db, act.id, { name: 'Tidy dining table' }).note, 'only glasses');
+  assert.equal(updateActivity(db, act.id, { note: null }).note, null);
+  // the todo keeps the note it was generated with
+  assert.equal(getIteration(db, it.id).todos.find((t) => t.activity_id === act.id).note, '* newspapers away, glasses away');
+});
+
+test('migrate adds note to activities and todos of an older database', async () => {
+  const { migrate } = await import('../app/db.mjs');
+  const db = openDb(':memory:');
+  db.exec('ALTER TABLE activities DROP COLUMN note');
+  db.exec('ALTER TABLE todos DROP COLUMN note');
+  migrate(db);
+  const room = createRoom(db, { name: 'Kitchen' });
+  assert.equal(createActivity(db, room.id, vacuum({ note: 'x' })).note, 'x');
+  assert.ok(db.prepare('PRAGMA table_info(todos)').all().some((c) => c.name === 'note'));
+});

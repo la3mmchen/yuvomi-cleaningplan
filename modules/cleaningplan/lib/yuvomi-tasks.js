@@ -34,13 +34,19 @@ export async function ensureCategoryKey({ signal, deps = realDeps() } = {}) {
   return key;
 }
 
+// Yuvomi renders the description as markdown, so a note like "* a, b" becomes a list.
+function taskDescription(todo) {
+  const base = t('extensions.cleaningplan.task.description', { room: todo.room_name, activity: todo.activity_name });
+  return todo.note ? `${base}\n\n${todo.note}` : base;
+}
+
 export async function createTaskForTodo(todo, { iterationId, categoryKey, tags = [], members = null, signal, deps = realDeps() }) {
   const body = {
     title: todo.title,
     due_date: todo.due_date,
     category: categoryKey,
     tags: [TAG, iterationTag(iterationId), ...tags],
-    description: t('extensions.cleaningplan.task.description', { room: todo.room_name, activity: todo.activity_name }),
+    description: taskDescription(todo),
   };
   if (todo.due_time) body.due_time = todo.due_time;
   // A default person who has left the household would make Yuvomi refuse the task (400).
