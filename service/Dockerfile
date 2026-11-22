@@ -6,7 +6,11 @@ WORKDIR /app
 COPY server.mjs ./
 COPY app ./app
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh && mkdir -p /data && chown node:node /data
+# The module page of the same version, for install-module.sh (named build context
+# `module` = modules/cleaningplan; CI and docker-compose.yml pass it).
+COPY --from=module . /module
+COPY install-module.sh /install-module.sh
+RUN chmod +x /entrypoint.sh /install-module.sh && mkdir -p /data && chown node:node /data
 ENV NODE_ENV=production PORT=3100 DB_PATH=/data/cleaningplan.db
 EXPOSE 3100
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

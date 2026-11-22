@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "cleaningplan",
   "name": "Cleaning plan",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Rooms, activities and schedules; generates each iteration's to-dos as Yuvomi tasks.",
   "entry": "index.js",
   "style": "style.css",

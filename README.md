@@ -81,7 +81,7 @@ Members with `ext:cleaningplan` = `read` see everything without the controls.
    ```yaml
    services:
      cleaningplan-api:
-       image: ghcr.io/la3mmchen/yuvomi-cleaningplan-api:0.2.0
+       image: ghcr.io/la3mmchen/yuvomi-cleaningplan-api:0.2.1
        restart: unless-stopped
        environment:
          YUVOMI_INTERNAL_URL: http://yuvomi:3000
@@ -100,6 +100,12 @@ Members with `ext:cleaningplan` = `read` see everything without the controls.
    `https://github.com/la3mmchen/yuvomi-cleaningplan` (installs the latest release; needs
    `MODULES_ALLOW_WEB_INSTALL=true`, and the module waits disabled until an admin approves it),
    or copy `modules/cleaningplan/` into Yuvomi's `modules/` folder by hand.
+   Or let the sidecar image do the copy: it carries the module page of its own version at
+   `/module`, and `/install-module.sh` puts it into a modules folder mounted at `/modules`
+   (two renames, owner `1000:1000`). Run it as an init container (Kubernetes) or a one-off
+   `docker run --rm --entrypoint /install-module.sh -v <yuvomi-modules>:/modules <image>`,
+   and page and sidecar update together. Such a folder counts as copied by hand: Yuvomi
+   serves it enabled without approval, and Settings can no longer replace or delete it.
 4. Grant members `ext:cleaningplan` in Settings -> Household -> Roles and permissions
    (`write` to edit the plan and generate, `read` to view). Generating also needs the
    member's Yuvomi Tasks permission, since the tasks are created in their name.

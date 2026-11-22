@@ -55,7 +55,10 @@ services:
       start_period: 10s
 
   cleaningplan-api:
-    build: ./service
+    build:
+      context: ./service
+      additional_contexts:
+        module: ./modules/cleaningplan
     image: yuvomi-cleaningplan-api:dev
     container_name: yuvomi-cleaningplan-api
     restart: unless-stopped
